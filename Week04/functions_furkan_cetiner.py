@@ -17,7 +17,7 @@ def custom_equation(x: int = 0, y: int = 0, /, a: int = 1, b: int = 1, *, c: int
     return float((x**a + y**b) / c)
 
 # 3. fn_w_counter: tracks total calls and caller names
-def fn_w_counter() -> tuple[int, dict]:
+def fn_w_counter() -> tuple[int, dict[str, int]]:
     """
     Counts the number of calls and tracks the caller (__name__).
     """
