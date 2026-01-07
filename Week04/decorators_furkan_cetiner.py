@@ -1,34 +1,52 @@
+from __future__ import annotations
+
 import time
 import tracemalloc
-import functools
+from functools import wraps
+from typing import Any, Callable, TypeVar, cast
 
-def performance(func):
-    """
-    Fonksiyonun performansını ölçen ve istatistiklerini saklayan dekoratör.
-    """
-    if not hasattr(performance, "counter"):
-        performance.counter = 0
-        performance.total_time = 0.0
-        performance.total_mem = 0
+F = TypeVar("F", bound=Callable[..., Any])
 
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        tracemalloc.start()
-        start_time = time.perf_counter()
-        result = func(*args, **kwargs)
-        end_time = time.perf_counter()
 
-        current_mem, peak_mem = tracemalloc.get_traced_memory()
-        tracemalloc.stop()
+def performance(func: F) -> F:
 
-        performance.counter += 1
-        performance.total_time += (end_time - start_time)
-        performance.total_mem += peak_mem
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        # ensure stats exist
+        wrapper.counter += 1  # type: ignore[attr-defined]
+
+        # time
+        t0 = time.perf_counter()
+
+        # memory (tracemalloc)
+        tracing_already = tracemalloc.is_tracing()
+        if not tracing_already:
+            tracemalloc.start()
+
+        before_current, before_peak = tracemalloc.get_traced_memory()
+        try:
+            result = func(*args, **kwargs)
+        finally:
+            after_current, after_peak = tracemalloc.get_traced_memory()
+            dt = time.perf_counter() - t0
+
+            wrapper.total_time += dt  # type: ignore[attr-defined]
+
+            # Use peak delta as "consumed" approximation for this call
+            delta_peak = after_peak - before_peak
+            if delta_peak < 0:
+                delta_peak = 0
+            wrapper.total_mem += int(delta_peak)  # type: ignore[attr-defined]
+
+            # Don't disrupt global tracing if it was already enabled
+            if not tracing_already:
+                tracemalloc.stop()
 
         return result
 
-    return wrapper
+    # required attributes
+    wrapper.counter = 0       # type: ignore[attr-defined]
+    wrapper.total_time = 0.0  # type: ignore[attr-defined]
+    wrapper.total_mem = 0     # type: ignore[attr-defined]
 
-performance.counter = 0
-performance.total_time = 0.0
-performance.total_mem = 0
+    return cast(F, wrapper)
